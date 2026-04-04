@@ -121,6 +121,12 @@ go test ./...
 
 ```
 DATABASE_CURATED_IN_GO/
+├── internal/
+│   └── database/
+│       ├── database.go        # Core data models, Add / Search / Filter logic
+│       └── database_test.go   # Unit tests for the database package
+├── main.go             # CLI entry point (list, search commands)
+├── go.mod              # Go module definition
 ├── .gitignore          # Go-specific ignore rules
 ├── LICENSE             # MIT License
 └── README.md           # Project documentation
