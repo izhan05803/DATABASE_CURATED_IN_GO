@@ -1,0 +1,28 @@
+# Binaries
+godb
+godb.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage
+coverage.out
+coverage.html
+
+# Database files
+data/*.godb
+*.godb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
