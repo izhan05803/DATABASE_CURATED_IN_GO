@@ -12,11 +12,15 @@ import (
 )
 
 const prompt = "godb> "
+const defaultDBPath = "data/database.godb"
 
 // Start starts the REPL loop
 func Start(in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
-	db := engine.New()
+	db, err := engine.NewPersistent(defaultDBPath)
+	if err != nil {
+		return fmt.Errorf("start persistent engine: %w", err)
+	}
 
 	for {
 		fmt.Fprint(out, prompt)
@@ -89,10 +93,26 @@ func execute(db *engine.Engine, cmd *types.Command) *types.Result {
 
 	case "INFO":
 		info := db.Info()
+		persisted := "no"
+		if ok, exists := info["persisted"].(bool); exists && ok {
+			persisted = "yes"
+		}
 		return &types.Result{
 			Success: true,
-			Message: fmt.Sprintf("Records: %d", info["records"]),
+			Message: fmt.Sprintf("Records: %d\nPersistent: %s", info["records"], persisted),
 		}
+
+	case "SAVE":
+		if err := db.Save(); err != nil {
+			return &types.Result{Success: false, Message: err.Error()}
+		}
+		return &types.Result{Success: true, Message: "OK"}
+
+	case "LOAD":
+		if err := db.Load(); err != nil {
+			return &types.Result{Success: false, Message: err.Error()}
+		}
+		return &types.Result{Success: true, Message: "OK"}
 
 	case "HELP":
 		help := `Commands:
@@ -100,6 +120,8 @@ func execute(db *engine.Engine, cmd *types.Command) *types.Result {
   GET key          Retrieve value by key
   DELETE key       Remove a key
   KEYS pattern     List keys matching pattern (use * as wildcard)
+  SAVE             Persist in-memory data to disk
+  LOAD             Reload data from disk
   INFO             Show database statistics
   HELP             Show this help
   EXIT             Exit the database`

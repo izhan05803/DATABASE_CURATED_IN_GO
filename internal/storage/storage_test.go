@@ -59,3 +59,32 @@ func TestFileManager_Initialize(t *testing.T) {
 		t.Errorf("page size = %d, want %d", fm.header.PageSize, PageSize)
 	}
 }
+
+func TestFileManager_ReadHeaderFromExistingFile(t *testing.T) {
+	tmpFile := "test_existing_db.godb"
+	defer os.Remove(tmpFile)
+
+	fm1, err := NewFileManager(tmpFile)
+	if err != nil {
+		t.Fatalf("NewFileManager() create error = %v", err)
+	}
+
+	fm1.header.TotalPages = 42
+	if err := fm1.writeHeader(); err != nil {
+		fm1.Close()
+		t.Fatalf("writeHeader() error = %v", err)
+	}
+	if err := fm1.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	fm2, err := NewFileManager(tmpFile)
+	if err != nil {
+		t.Fatalf("NewFileManager() reopen error = %v", err)
+	}
+	defer fm2.Close()
+
+	if fm2.header.TotalPages != 42 {
+		t.Errorf("total pages = %d, want 42", fm2.header.TotalPages)
+	}
+}

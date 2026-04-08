@@ -91,6 +91,14 @@ func ValidateCommand(cmd *types.Command) error {
 		}
 	case "INFO", "HELP", "EXIT":
 		// No arguments required
+	case "SAVE":
+		if len(cmd.Args) != 0 {
+			return fmt.Errorf("SAVE does not take arguments")
+		}
+	case "LOAD":
+		if len(cmd.Args) != 0 {
+			return fmt.Errorf("LOAD does not take arguments")
+		}
 	default:
 		return fmt.Errorf("unknown command: %s", cmd.Type)
 	}

@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -107,4 +109,54 @@ func TestEngine_Concurrent(t *testing.T) {
 
 	<-done
 	<-done
+}
+
+func TestEngine_SaveLoadSurvivesRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "restart.godb")
+
+	e1, err := NewPersistent(dbPath)
+	if err != nil {
+		t.Fatalf("NewPersistent() create error = %v", err)
+	}
+
+	if err := e1.Set("user:1", []byte("John")); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if err := e1.Set("user:2", []byte("Jane")); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	if err := e1.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := e1.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	e2, err := NewPersistent(dbPath)
+	if err != nil {
+		t.Fatalf("NewPersistent() reopen error = %v", err)
+	}
+	defer e2.Close()
+
+	got1, err := e2.Get("user:1")
+	if err != nil {
+		t.Fatalf("Get(user:1) error = %v", err)
+	}
+	if string(got1) != "John" {
+		t.Errorf("Get(user:1) = %q, want %q", string(got1), "John")
+	}
+
+	got2, err := e2.Get("user:2")
+	if err != nil {
+		t.Fatalf("Get(user:2) error = %v", err)
+	}
+	if string(got2) != "Jane" {
+		t.Errorf("Get(user:2) = %q, want %q", string(got2), "Jane")
+	}
+
+	if _, statErr := os.Stat(dbPath); statErr != nil {
+		t.Fatalf("expected db file to exist: %v", statErr)
+	}
 }

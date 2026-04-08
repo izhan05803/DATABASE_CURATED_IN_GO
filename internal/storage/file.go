@@ -3,7 +3,10 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
+
+	"github.com/izhan05803/gofromscratchdb/pkg/types"
 )
 
 const (
@@ -75,7 +78,17 @@ func (fm *FileManager) writeHeader() error {
 	if _, err := fm.file.Seek(0, 0); err != nil {
 		return err
 	}
-	return binary.Write(fm.file, binary.LittleEndian, &fm.header)
+
+	buf := make([]byte, HeaderSize)
+	copy(buf[0:4], fm.header.Magic[:])
+	binary.LittleEndian.PutUint32(buf[4:8], fm.header.Version)
+	binary.LittleEndian.PutUint32(buf[8:12], fm.header.PageSize)
+	binary.LittleEndian.PutUint32(buf[12:16], fm.header.TotalPages)
+	binary.LittleEndian.PutUint32(buf[16:20], fm.header.FreeListHead)
+	binary.LittleEndian.PutUint32(buf[20:24], fm.header.RootPage)
+
+	_, err := fm.file.Write(buf)
+	return err
 }
 
 // readHeader reads the header from disk
@@ -83,7 +96,74 @@ func (fm *FileManager) readHeader() error {
 	if _, err := fm.file.Seek(0, 0); err != nil {
 		return err
 	}
-	return binary.Read(fm.file, binary.LittleEndian, &fm.header)
+
+	buf := make([]byte, HeaderSize)
+	if _, err := fm.file.Read(buf); err != nil {
+		return err
+	}
+
+	copy(fm.header.Magic[:], buf[0:4])
+	if string(fm.header.Magic[:]) != MagicNumber {
+		return types.ErrInvalidFormat
+	}
+
+	fm.header.Version = binary.LittleEndian.Uint32(buf[4:8])
+	fm.header.PageSize = binary.LittleEndian.Uint32(buf[8:12])
+	fm.header.TotalPages = binary.LittleEndian.Uint32(buf[12:16])
+	fm.header.FreeListHead = binary.LittleEndian.Uint32(buf[16:20])
+	fm.header.RootPage = binary.LittleEndian.Uint32(buf[20:24])
+
+	return nil
+}
+
+// WritePayload writes serialized records right after the fixed-size header.
+func (fm *FileManager) WritePayload(payload []byte) error {
+	if _, err := fm.file.Seek(HeaderSize, io.SeekStart); err != nil {
+		return err
+	}
+
+	if err := fm.file.Truncate(HeaderSize); err != nil {
+		return err
+	}
+
+	if len(payload) == 0 {
+		return fm.file.Sync()
+	}
+
+	if _, err := fm.file.Write(payload); err != nil {
+		return err
+	}
+
+	return fm.file.Sync()
+}
+
+// ReadPayload reads serialized records from the database file.
+func (fm *FileManager) ReadPayload() ([]byte, error) {
+	if _, err := fm.file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	info, err := fm.file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	if info.Size() <= HeaderSize {
+		return []byte{}, nil
+	}
+
+	payloadSize := info.Size() - HeaderSize
+	payload := make([]byte, payloadSize)
+
+	if _, err := fm.file.Seek(HeaderSize, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	if _, err := io.ReadFull(fm.file, payload); err != nil {
+		return nil, err
+	}
+
+	return payload, nil
 }
 
 // Close closes the file

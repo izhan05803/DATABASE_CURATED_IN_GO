@@ -96,6 +96,10 @@ func TestValidateCommand(t *testing.T) {
 		{"DELETE", []string{"foo"}, false},
 		{"KEYS", []string{"*"}, false},
 		{"INFO", []string{}, false},
+		{"SAVE", []string{}, false},
+		{"SAVE", []string{"x"}, true},
+		{"LOAD", []string{}, false},
+		{"LOAD", []string{"x"}, true},
 		{"UNKNOWN", []string{}, true},
 	}
 
