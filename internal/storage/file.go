@@ -31,6 +31,10 @@ type FileManager struct {
 	header FileHeader
 }
 
+func pageOffset(pageID uint32) int64 {
+	return HeaderSize + int64(pageID)*PageSize
+}
+
 // NewFileManager creates or opens a database file
 func NewFileManager(path string) (*FileManager, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
@@ -114,6 +118,113 @@ func (fm *FileManager) readHeader() error {
 	fm.header.RootPage = binary.LittleEndian.Uint32(buf[20:24])
 
 	return nil
+}
+
+// TotalPages returns the number of pages tracked in file header.
+func (fm *FileManager) TotalPages() uint32 {
+	return fm.header.TotalPages
+}
+
+// SetTotalPages updates the total pages metadata in file header.
+func (fm *FileManager) SetTotalPages(total uint32) error {
+	fm.header.TotalPages = total
+	return fm.writeHeader()
+}
+
+// RootPage returns the root/start page pointer from file header.
+func (fm *FileManager) RootPage() uint32 {
+	return fm.header.RootPage
+}
+
+// SetRootPage updates the root/start page pointer in file header.
+func (fm *FileManager) SetRootPage(pageID uint32) error {
+	fm.header.RootPage = pageID
+	return fm.writeHeader()
+}
+
+// WritePage writes one fixed-size page at its page offset.
+func (fm *FileManager) WritePage(page *types.Page) error {
+	buf, err := SerializePage(page)
+	if err != nil {
+		return err
+	}
+
+	if page.PageID >= fm.header.TotalPages {
+		if err := fm.SetTotalPages(page.PageID + 1); err != nil {
+			return err
+		}
+	}
+
+	if _, err := fm.file.Seek(pageOffset(page.PageID), io.SeekStart); err != nil {
+		return err
+	}
+
+	if _, err := fm.file.Write(buf); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ReadPage reads one fixed-size page from disk.
+func (fm *FileManager) ReadPage(pageID uint32) (*types.Page, error) {
+	if pageID >= fm.header.TotalPages {
+		return nil, fmt.Errorf("page %d out of range", pageID)
+	}
+
+	if _, err := fm.file.Seek(pageOffset(pageID), io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, PageSize)
+	if _, err := io.ReadFull(fm.file, buf); err != nil {
+		return nil, err
+	}
+
+	page, err := DeserializePage(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return page, nil
+}
+
+// ClearPage overwrites an existing page with zero bytes.
+func (fm *FileManager) ClearPage(pageID uint32) error {
+	if pageID >= fm.header.TotalPages {
+		return nil
+	}
+
+	if _, err := fm.file.Seek(pageOffset(pageID), io.SeekStart); err != nil {
+		return err
+	}
+
+	zero := make([]byte, PageSize)
+	if _, err := fm.file.Write(zero); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ResetPages truncates all page data and resets page metadata.
+func (fm *FileManager) ResetPages() error {
+	if err := fm.file.Truncate(HeaderSize); err != nil {
+		return err
+	}
+
+	fm.header.TotalPages = 0
+	fm.header.RootPage = 0
+	if err := fm.writeHeader(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Sync flushes file buffers to disk.
+func (fm *FileManager) Sync() error {
+	return fm.file.Sync()
 }
 
 // WritePayload writes serialized records right after the fixed-size header.
