@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	indexpkg "github.com/izhan05803/gofromscratchdb/internal/index"
 	storagepkg "github.com/izhan05803/gofromscratchdb/internal/storage"
 	"github.com/izhan05803/gofromscratchdb/pkg/types"
 )
@@ -21,12 +22,15 @@ type Engine struct {
 	file    *storagepkg.FileManager
 	pages   *storagepkg.PageManager
 	buffer  *storagepkg.BufferPool
+	keyPage map[string]uint32
 }
 
 // New creates a new database engine
 func New() *Engine {
 	return &Engine{
-		data: make(map[string]types.Record),
+		data:    make(map[string]types.Record),
+		index:   indexpkg.NewBTree(16),
+		keyPage: make(map[string]uint32),
 	}
 }
 
@@ -45,8 +49,10 @@ func NewPersistent(path string) (*Engine, error) {
 	}
 
 	e := &Engine{
-		data: make(map[string]types.Record),
-		file: fm,
+		data:    make(map[string]types.Record),
+		index:   indexpkg.NewBTree(16),
+		file:    fm,
+		keyPage: make(map[string]uint32),
 	}
 	e.pages = storagepkg.NewPageManager(fm)
 	e.buffer = storagepkg.NewBufferPool(128, e.pages)
@@ -65,6 +71,7 @@ func NewWithStorage(storage types.Storage, index types.Index) *Engine {
 		data:    make(map[string]types.Record),
 		storage: storage,
 		index:   index,
+		keyPage: make(map[string]uint32),
 	}
 }
 
@@ -72,6 +79,19 @@ func NewWithStorage(storage types.Storage, index types.Index) *Engine {
 func (e *Engine) Get(key string) ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+
+	if e.buffer != nil && e.index != nil {
+		if pageID, found := e.index.Search(key); found {
+			page, err := e.buffer.GetPage(pageID)
+			if err == nil {
+				for _, rec := range page.Records {
+					if rec.Key == key && !rec.Deleted {
+						return rec.Value, nil
+					}
+				}
+			}
+		}
+	}
 
 	record, ok := e.data[key]
 	if !ok || record.Deleted {
@@ -93,6 +113,12 @@ func (e *Engine) Set(key string, value []byte) error {
 		Deleted:   false,
 	}
 
+	if e.index != nil {
+		if pageID, ok := e.keyPage[key]; ok {
+			_ = e.index.Insert(key, pageID)
+		}
+	}
+
 	return nil
 }
 
@@ -109,6 +135,11 @@ func (e *Engine) Delete(key string) error {
 	record.Deleted = true
 	record.Timestamp = time.Now().UnixNano()
 	e.data[key] = record
+
+	if e.index != nil {
+		_ = e.index.Delete(key)
+	}
+	delete(e.keyPage, key)
 
 	return nil
 }
@@ -170,6 +201,9 @@ func (e *Engine) Save() error {
 		return fmt.Errorf("reset pages: %w", err)
 	}
 
+	e.index = indexpkg.NewBTree(16)
+	e.keyPage = make(map[string]uint32)
+
 	keys := make([]string, 0, len(e.data))
 	for k, r := range e.data {
 		if !r.Deleted {
@@ -206,6 +240,13 @@ func (e *Engine) Save() error {
 
 		if err := e.buffer.PutPage(page); err != nil {
 			return fmt.Errorf("write page for key %q: %w", key, err)
+		}
+
+		if e.index != nil {
+			if err := e.index.Insert(key, pageID); err != nil {
+				return fmt.Errorf("index insert for key %q: %w", key, err)
+			}
+			e.keyPage[key] = pageID
 		}
 
 		if first {
@@ -250,6 +291,8 @@ func (e *Engine) Load() error {
 	}
 
 	e.data = make(map[string]types.Record)
+	e.index = indexpkg.NewBTree(16)
+	e.keyPage = make(map[string]uint32)
 
 	if e.file.TotalPages() == 0 {
 		return nil
@@ -271,6 +314,12 @@ func (e *Engine) Load() error {
 
 		for _, rec := range page.Records {
 			e.data[rec.Key] = rec
+			if !rec.Deleted && e.index != nil {
+				if err := e.index.Insert(rec.Key, currentPageID); err != nil {
+					return fmt.Errorf("index insert for key %q: %w", rec.Key, err)
+				}
+				e.keyPage[rec.Key] = currentPageID
+			}
 		}
 
 		if page.NextPage == 0 {
