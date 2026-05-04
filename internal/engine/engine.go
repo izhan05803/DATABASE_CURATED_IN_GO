@@ -190,8 +190,8 @@ func (e *Engine) Info() map[string]interface{} {
 
 // Save serializes all records to disk.
 func (e *Engine) Save() error {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	if e.file == nil || e.pages == nil || e.buffer == nil {
 		return nil
