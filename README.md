@@ -96,22 +96,16 @@ Uptime: 00:05:32
 
 ## 🏛️ Architecture Overview
 
-*(We plan to add an architecture diagram image here: `![Architecture Diagram](docs/architecture.png)`)*
+![Architecture Diagram](docs/architecture.png)
 
-```text
-[ CLI ]
-   |
-[ Command Parser ]
-   |
-[ Execution Engine ]
-   |---[ Index Manager (B-Tree) ]
-   |---[ Buffer Pool ]
-   |---[ Query Processor ]
-   |
-[ Storage Engine ]
-   |
-[ Data File (database.godb) ]
-```
+**Component Breakdown:**
+- **CLI/REPL**: Command-line interface for user interaction
+- **Parser**: Lexical analysis and command syntax validation
+- **Engine**: Core logic (validator, executor, formatter)
+- **Index**: B-Tree for O(log n) key lookups
+- **Buffer Pool**: LRU cache for page management
+- **Storage**: File I/O and paging system
+- **Data File**: Persistent binary storage (database.godb)
 
 ---
 
@@ -173,10 +167,10 @@ gofromscratchdb/
 - **INFO Command**: 13+ metrics (storage, operations, cache, system)
 
 ### Documentation 📚
-- `CLI_FEATURES_GUIDE.md` - 700+ lines with 30s/2m/5m interview pitches
+- `CLI_FEATURES_GUIDE.md` - 700+ lines with technical deep-dives
 - `REPL_ARCHITECTURE.html` - Interactive diagrams (36 KB, 3 Mermaid charts)
 - `LOCK_CONTENTION_STRATEGY.md` - Concurrency analysis
-- `BTREE_INTERVIEW_GUIDE.md` - 3,500+ line deep dive
+- `docs/architecture.png` - Visual system architecture
 
 ### Code Quality 🎯
 - **296+ tests**: All passing, 80%+ coverage
@@ -187,10 +181,10 @@ gofromscratchdb/
 ---
 
 ## 📚 What You'll Learn
-- Data structures (B-Tree), file I/O, binary encoding, memory management, algorithms, concurrency
-- Go: structs, interfaces, error handling, testing, CLI, file ops
-- Software engineering: design, modularity, testing, git, docs
-- Interview prep: "How does a DB work?", "Explain B-Trees", "How is data persisted?"
+- **Database Internals**: B-Tree indexing, page-based storage, buffer pool management, WAL concepts
+- **Systems Programming**: File I/O, binary encoding, memory management, concurrency patterns
+- **Go Proficiency**: Structs, interfaces, error handling, testing, CLI development, benchmarking
+- **Production Skills**: Performance optimization, monitoring/metrics, error handling strategies, code architecture
 
 ---
 
@@ -219,39 +213,30 @@ gofromscratchdb/
 - [x] Lock contention analysis
 
 ### Documentation
-- [x] README with examples
-- [x] CLI usage guide
-- [x] Architecture documentation (HTML + Markdown)
-- [x] Interview preparation guides (30s/2m/5m pitches)
+- [x] README with examples and architecture diagram
+- [x] CLI usage guide and features documentation
+- [x] Architecture documentation (HTML + PNG + Markdown)
 - [x] B-Tree deep-dive (3,500+ lines)
 - [x] Lock contention strategy guide
 - [x] Code comments and type documentation
 - [x] GitHub repository with commit history
-
-### Portfolio & Presentation
-- [x] Beautiful GitHub repository
-- [x] Interactive architecture diagrams
-- [x] Professional HTML documentation
-- [x] Interview talking points prepared
-- [x] Code quality and patterns demonstrated
 
 ---
 
 ## 🚀 Next Steps / Future Phases
 
 ### Phase 7: Production Extensions (Optional)
-**Goal**: Extend CLI with production-grade features
+**Goal**: Extend CLI with production-grade features for live hosting
 
 - [ ] **Persistent History**: Save command history to `.godb_history` file
-- [ ] **Command Aliases**: `alias shortcut fullcmd`
-- [ ] **Macro Recording**: Record and replay command sequences
-- [ ] **Shell Integration**: Bash/Zsh completion scripts
 - [ ] **Configuration File**: `.godb.rc` for custom settings
 - [ ] **Colored Output**: ANSI color support with terminal detection
 - [ ] **Command Logging**: Structured logging for audit trails
+- [ ] **Health Checks**: `HEALTH` command for monitoring
+- [ ] **Graceful Shutdown**: Proper cleanup and persistence on exit
 
-### Phase 8: REST API & Server (Optional)
-**Goal**: Add network access to database
+### Phase 8: REST API & Network Server (Priority for Hosting)
+**Goal**: Convert CLI to network-accessible database server
 
 - [ ] **HTTP REST API**: 
   - `POST /api/set` - Set key-value
@@ -259,14 +244,18 @@ gofromscratchdb/
   - `DELETE /api/delete/:key` - Delete key
   - `GET /api/keys/:pattern` - List keys
   - `GET /api/info` - Get statistics
+  - `GET /api/health` - Health check
 
-- [ ] **TCP Server**: Raw protocol server for multiple clients
-- [ ] **WebSocket Support**: Real-time updates
-- [ ] **gRPC Service**: Type-safe RPC interface
-- [ ] **Client Library**: Go client for easy integration
+- [ ] **Server Setup**:
+  - HTTP server on configurable port
+  - CORS support for browser clients
+  - Request/response logging
+  - Rate limiting
 
-### Phase 9: Advanced Features (Optional)
-**Goal**: Add advanced database features
+- [ ] **Client Library**: Go SDK for easy integration
+
+### Phase 9: Advanced Hosting Features (Optional)
+**Goal**: Add enterprise-grade features for production deployment
 
 - [ ] **Transactions**: BEGIN, COMMIT, ROLLBACK
 - [ ] **Write-Ahead Log (WAL)**: Durability guarantee
@@ -274,64 +263,61 @@ gofromscratchdb/
 - [ ] **Snapshots**: Point-in-time recovery
 - [ ] **Replication**: Multi-node support
 - [ ] **Compression**: Data compression for storage
-- [ ] **Encryption**: At-rest encryption
 
-### Phase 10: Documentation & Learning (Optional)
-**Goal**: Create comprehensive learning materials
+### Phase 10: Docker & Cloud Deployment (Optional)
+**Goal**: Prepare for cloud hosting
 
-- [ ] **Video Tutorials**: Step-by-step building guide
-- [ ] **Blog Posts**: Design decisions and learnings
-- [ ] **Interactive Demos**: Live coding sessions
-- [ ] **Architecture Diagrams**: SVG diagrams for each component
-- [ ] **Performance Analysis**: Benchmarking guide
-- [ ] **Interview Prep Guide**: Comprehensive FAQ
-- [ ] **Contributing Guide**: For community contributions
+- [ ] **Dockerfile**: Container image build
+- [ ] **Docker Compose**: Multi-service setup (db + monitoring)
+- [ ] **Kubernetes manifests**: K8s deployment files
+- [ ] **Monitoring**: Prometheus metrics export
+- [ ] **Benchmarking**: Performance baselines for sizing
+- [ ] **Documentation**: Deployment guide
 
 ---
 
 ## 🎯 How to Use This Project
 
-### For Learning
+### For Learning & Development
 ```bash
 # Clone the repository
 git clone https://github.com/izhan05803/DATABASE_CURATED_IN_GO.git
 cd DATABASE_CURATED_IN_GO
 
-# Run the database
-go run ./cmd/godb
+# Build the database
+go build -o godb ./cmd/godb
 
-# Run all tests
+# Run the database
+./godb
+
+# Run all tests (296+ tests)
 go test ./... -v
 
-# View architecture documentation
-# Open REPL_ARCHITECTURE.html in your browser
+# View architecture
+# Open REPL_ARCHITECTURE.html in browser
+# Or view docs/architecture.png for overview
 ```
 
-### For Interviews
-```bash
-# Key talking points to prepare:
-# 1. B-Tree indexing: "Balanced tree, O(log n) search/insert/delete"
-# 2. Buffer pool: "LRU cache for page eviction, minimizes disk I/O"
-# 3. Lock strategy: "Dual-lock approach separates metrics from critical path"
-# 4. Pattern matching: "DP-based glob matcher, O(n*m) complexity"
-# 5. Architecture: "REPL orchestrator with separation of concerns"
+### Building a Network Server
+This project is designed for live hosting. The separation of concerns makes it easy to add:
 
-# Walk through REPL_ARCHITECTURE.html showing:
-# - Component diagram
-# - Execution flow (9 steps)
-# - Responsibilities table
-# - Evolution section (showing reusability)
+```go
+// Example: Convert CLI to HTTP server
+// (Handler accepts same input, calls Engine.Execute(), returns formatted output)
+
+// The Engine, Parser, and Formatter can work with any transport:
+// - CLI (current)
+// - HTTP REST API (Phase 8)
+// - gRPC (Phase 8)
+// - TCP socket (Phase 8)
+// - WebSocket (Phase 8)
 ```
 
-### For Portfolio
-```
-Perfect for highlighting:
-- System design skills
-- Go proficiency
-- Testing discipline (296+ tests)
-- Documentation quality (10,000+ lines)
-- Performance optimization (2.3M ops/sec)
-- Clean architecture practices
-```
+### Deployment Ready
+- **Zero external dependencies**: Easy Docker containerization
+- **Metrics tracking**: Monitor performance in production (INFO command)
+- **Concurrent operations**: Production-grade concurrency (2.3M ops/sec)
+- **Error handling**: Comprehensive error context for debugging
+- **Persistent storage**: Data survives restarts
 
 ---
