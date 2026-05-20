@@ -15,22 +15,32 @@ import (
 
 // Engine is the core database engine
 type Engine struct {
-	mu      sync.RWMutex
-	data    map[string]types.Record
-	index   types.Index
-	storage types.Storage
-	file    *storagepkg.FileManager
-	pages   *storagepkg.PageManager
-	buffer  *storagepkg.BufferPool
-	keyPage map[string]uint32
+	mu       sync.RWMutex
+	data     map[string]types.Record
+	index    types.Index
+	storage  types.Storage
+	file     *storagepkg.FileManager
+	pages    *storagepkg.PageManager
+	buffer   *storagepkg.BufferPool
+	keyPage  map[string]uint32
+	filePath string // Path to database file for stats
+	// Metrics tracking for observability
+	metricsMu   sync.RWMutex
+	opsGet      int64 // Total GET operations
+	opsSet      int64 // Total SET operations
+	opsDelete   int64 // Total DELETE operations
+	cacheHits   int64 // Buffer pool cache hits
+	cacheMisses int64 // Buffer pool cache misses
+	startTime   time.Time
 }
 
 // New creates a new database engine
 func New() *Engine {
 	return &Engine{
-		data:    make(map[string]types.Record),
-		index:   indexpkg.NewBTree(16),
-		keyPage: make(map[string]uint32),
+		data:      make(map[string]types.Record),
+		index:     indexpkg.NewBTree(16),
+		keyPage:   make(map[string]uint32),
+		startTime: time.Now(),
 	}
 }
 
@@ -49,10 +59,12 @@ func NewPersistent(path string) (*Engine, error) {
 	}
 
 	e := &Engine{
-		data:    make(map[string]types.Record),
-		index:   indexpkg.NewBTree(16),
-		file:    fm,
-		keyPage: make(map[string]uint32),
+		data:      make(map[string]types.Record),
+		index:     indexpkg.NewBTree(16),
+		file:      fm,
+		filePath:  path,
+		keyPage:   make(map[string]uint32),
+		startTime: time.Now(),
 	}
 	e.pages = storagepkg.NewPageManager(fm)
 	e.buffer = storagepkg.NewBufferPool(128, e.pages)
@@ -68,10 +80,11 @@ func NewPersistent(path string) (*Engine, error) {
 // NewWithStorage creates a new engine with a storage backend
 func NewWithStorage(storage types.Storage, index types.Index) *Engine {
 	return &Engine{
-		data:    make(map[string]types.Record),
-		storage: storage,
-		index:   index,
-		keyPage: make(map[string]uint32),
+		data:      make(map[string]types.Record),
+		storage:   storage,
+		index:     index,
+		keyPage:   make(map[string]uint32),
+		startTime: time.Now(),
 	}
 }
 
@@ -80,10 +93,19 @@ func (e *Engine) Get(key string) ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
+	// Track operation
+	e.metricsMu.Lock()
+	e.opsGet++
+	e.metricsMu.Unlock()
+
 	if e.buffer != nil && e.index != nil {
 		if pageID, found := e.index.Search(key); found {
 			page, err := e.buffer.GetPage(pageID)
 			if err == nil {
+				// Track cache hit
+				e.metricsMu.Lock()
+				e.cacheHits++
+				e.metricsMu.Unlock()
 				for _, rec := range page.Records {
 					if rec.Key == key && !rec.Deleted {
 						return rec.Value, nil
@@ -113,6 +135,11 @@ func (e *Engine) Set(key string, value []byte) error {
 		Deleted:   false,
 	}
 
+	// Track operation
+	e.metricsMu.Lock()
+	e.opsSet++
+	e.metricsMu.Unlock()
+
 	if e.index != nil {
 		if pageID, ok := e.keyPage[key]; ok {
 			_ = e.index.Insert(key, pageID)
@@ -136,6 +163,11 @@ func (e *Engine) Delete(key string) error {
 	record.Timestamp = time.Now().UnixNano()
 	e.data[key] = record
 
+	// Track operation
+	e.metricsMu.Lock()
+	e.opsDelete++
+	e.metricsMu.Unlock()
+
 	if e.index != nil {
 		_ = e.index.Delete(key)
 	}
@@ -144,47 +176,126 @@ func (e *Engine) Delete(key string) error {
 	return nil
 }
 
-// Keys returns all keys matching a pattern (simple prefix match for MVP)
+// Keys returns all keys matching a glob pattern.
+// Supports * (zero or more chars) and ? (exactly one char) wildcards.
+// Scans all keys and returns matches in sorted order.
 func (e *Engine) Keys(pattern string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
 	var keys []string
 	for k, r := range e.data {
-		if !r.Deleted {
-			// Simple implementation: return all keys if pattern is "*"
-			// or keys that start with pattern (minus trailing *)
-			if pattern == "*" {
-				keys = append(keys, k)
-			} else if len(pattern) > 0 && pattern[len(pattern)-1] == '*' {
-				prefix := pattern[:len(pattern)-1]
-				if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-					keys = append(keys, k)
-				}
-			} else if k == pattern {
-				keys = append(keys, k)
+		if !r.Deleted && matchPattern(k, pattern) {
+			keys = append(keys, k)
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(keys)
+	return keys
+}
+
+// matchPattern is a local wrapper around repl.MatchPattern for pattern matching
+func matchPattern(key, pattern string) bool {
+	n, m := len(key), len(pattern)
+
+	// dp[i][j] = does key[0..i-1] match pattern[0..j-1]
+	dp := make([][]bool, n+1)
+	for i := range dp {
+		dp[i] = make([]bool, m+1)
+	}
+
+	// Base case: empty key matches empty pattern
+	dp[0][0] = true
+
+	// Handle patterns like * or ** that can match empty key
+	for j := 1; j <= m; j++ {
+		if pattern[j-1] == '*' {
+			dp[0][j] = dp[0][j-1]
+		}
+	}
+
+	// Fill DP table
+	for i := 1; i <= n; i++ {
+		for j := 1; j <= m; j++ {
+			if pattern[j-1] == '*' {
+				// * can match zero chars (dp[i][j-1]) or one+ chars (dp[i-1][j])
+				dp[i][j] = dp[i][j-1] || dp[i-1][j]
+			} else if pattern[j-1] == '?' || pattern[j-1] == key[i-1] {
+				// ? matches any single char, or literal must match
+				dp[i][j] = dp[i-1][j-1]
 			}
 		}
 	}
 
-	return keys
+	return dp[n][m]
 }
 
 // Info returns database statistics
+// Info returns comprehensive database statistics for monitoring
 func (e *Engine) Info() map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
+	// Count active records
 	count := 0
-	for _, r := range e.data {
+	totalSize := 0
+	for k, r := range e.data {
 		if !r.Deleted {
 			count++
+			totalSize += len(k) + len(r.Value)
 		}
 	}
 
+	// Get metrics
+	e.metricsMu.RLock()
+	opsGet := e.opsGet
+	opsSet := e.opsSet
+	opsDelete := e.opsDelete
+	cacheHits := e.cacheHits
+	cacheMisses := e.cacheMisses
+	startTime := e.startTime
+	e.metricsMu.RUnlock()
+
+	// Calculate cache hit rate
+	totalAccesses := cacheHits + cacheMisses
+	hitRate := 0.0
+	if totalAccesses > 0 {
+		hitRate = float64(cacheHits) / float64(totalAccesses) * 100
+	}
+
+	// Get file size if persisted
+	fileSize := int64(0)
+	if e.filePath != "" {
+		if stat, err := os.Stat(e.filePath); err == nil {
+			fileSize = stat.Size()
+		}
+	}
+
+	// Calculate uptime
+	uptime := time.Since(startTime)
+
 	return map[string]interface{}{
-		"records":   count,
-		"persisted": e.file != nil,
+		// Storage & Records
+		"records":         count,
+		"memory_usage_kb": totalSize / 1024,
+		"persisted":       e.file != nil,
+		"file_size_bytes": fileSize,
+
+		// Operations
+		"total_gets":       opsGet,
+		"total_sets":       opsSet,
+		"total_deletes":    opsDelete,
+		"total_operations": opsGet + opsSet + opsDelete,
+
+		// Cache Performance
+		"cache_hits":         cacheHits,
+		"cache_misses":       cacheMisses,
+		"cache_hit_rate_pct": fmt.Sprintf("%.1f%%", hitRate),
+
+		// System Info
+		"uptime_seconds": int64(uptime.Seconds()),
+		"server_time":    time.Now().Format("2006-01-02 15:04:05"),
 	}
 }
 
