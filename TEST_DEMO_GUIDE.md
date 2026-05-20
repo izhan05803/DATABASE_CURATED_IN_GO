@@ -11,10 +11,14 @@ A comprehensive walkthrough demonstrating all features with real-world examples 
 ## 🚀 Quick Start
 
 ```bash
-# Build the database
-go build -o godb ./cmd/godb
+# Build the database (Windows adds .exe automatically)
+go build -o godb.exe ./cmd/godb
 
 # Start the CLI
+godb.exe
+
+# Or on Linux/Mac:
+go build -o godb ./cmd/godb
 ./godb
 
 # Expected output:

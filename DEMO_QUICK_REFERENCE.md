@@ -8,8 +8,9 @@
 
 ```
 1. START (1 min)
-   go build -o godb ./cmd/godb
-   ./godb
+   go build -o godb.exe ./cmd/godb  (Windows)
+   ./godb.exe                        (Windows)
+   # Or: go build -o godb && ./godb (Linux/Mac)
 
 2. CRUD (2 min)
    SET user:1 "Alice"

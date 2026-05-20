@@ -230,8 +230,8 @@ EXIT
 
 - [ ] README updated (architecture diagram added)
 - [ ] All tests pass: `go test ./...`
-- [ ] Build works: `go build -o godb ./cmd/godb`
-- [ ] Binary runs: `./godb` starts cleanly
+- [ ] Build works: `go build -o godb.exe ./cmd/godb` (Windows) or `go build -o godb ./cmd/godb` (Linux/Mac)
+- [ ] Binary runs: `godb.exe` (Windows) or `./godb` (Linux/Mac) starts cleanly
 - [ ] Database file cleaned: `rm database.godb`
 - [ ] Terminal width: 100+ characters
 - [ ] Files ready: TEST_DEMO_GUIDE, QUICK_REFERENCE

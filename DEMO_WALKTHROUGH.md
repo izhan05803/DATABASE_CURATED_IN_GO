@@ -6,14 +6,20 @@
 
 ## Part 1: Setup (1 min)
 
-**Build:**
+**Build (Windows):**
 ```bash
 cd database_in_go
-go build -o godb ./cmd/godb
+go build -o godb.exe ./cmd/godb
 ```
 
-**Start:**
+**Start (Windows):**
 ```bash
+godb.exe
+```
+
+**Or on Linux/Mac:**
+```bash
+go build -o godb ./cmd/godb
 ./godb
 ```
 
